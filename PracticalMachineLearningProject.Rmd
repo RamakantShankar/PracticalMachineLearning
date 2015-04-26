@@ -1,0 +1,146 @@
+---
+title: "PracticalMachineLearningProject"
+author: "Ramakant Shankar"
+date: "Saturday, April 25, 2015"
+output:
+  html_document:
+    highlight: tango
+    theme: cerulean
+    toc: yes
+---
+
+# Executive Summary
+### Background
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset). 
+
+### Data Source 
+
+The training data for this project are available here: 
+  https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+The test data are available here: 
+  https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+
+```{r set-options, echo=FALSE}
+library(knitr)
+opts_chunk$set(comment = "", warning = FALSE, message = FALSE, size="small")
+```
+
+# Preparing the data
+#### Loading the data
+*Converting all Blank fields from the CSV file to NA*
+```{r}
+pmlTrain <- read.csv("pml-training.csv", na.strings=c("NA",""))
+pmlTest <-  read.csv("pml-testing.csv", na.strings=c("NA",""))
+
+```
+
+### Explore and clean the Data
+
+#### Explore data
+```{r,results='hide'}
+head(pmlTrain)              # Check sample of data
+pmlTrain <- pmlTrain[,-1]   # Remove ID column as it does not have any info for prediction
+summary(pmlTrain)           # Observing overall summary of data
+
+```
+*There are lot of NAs observed in many columns. Some fields have even over 97% of values as NA. Such column will not be useful in Model and will increase the overhead of the model calculation. Hence it would bebetter to drop such fields. Lets decide a threshold of 60%. *
+
+#### Choosing fields with high quality data only
+```{r}
+# creating list of Fields with over 60% of valid values
+goodCols <- c(colSums(!is.na(pmlTrain[,-ncol(pmlTrain)])) >= 0.6* nrow(pmlTrain))   
+pmlTrain <- pmlTrain[,goodCols]         # Choosing columns from above list
+```
+
+# Create Model and Validate
+### Divide the Available data for Training and Validation 
+#### Let's choose 60% of data for Training and rest 40% for validation of model
+*We will create our model on 60% of the Given data will use rest 40% of data for validating our Model*
+```{r}
+library(caret)
+rowsForTrain <- createDataPartition(pmlTrain$classe, p=0.60, list=FALSE)
+forTrain <- pmlTrain[rowsForTrain,]
+forTest  <- pmlTrain[-rowsForTrain,]
+```
+
+### Create model for Training dataset - using Random Forest
+```{r}
+library(randomForest)
+model <- randomForest(classe ~.,data=forTrain)
+print(model)
+```
+*The model seems to be performing good as error rate is only 0.18%*
+*The confusion matrix suggests that the model is highly accurate for the data on which it the model has been created. Lets try it on rest of the 40 % of training data*
+
+### Validate the model
+#### Creating confusion matrix of Predicted values from Model Vs the Actual Values in the validation data
+```{r}
+confusionMatrix(predict(model,forTest), forTest$classe)
+
+```
+*The model performed very well on the Validation data as the accuracy seems to be around 99.2%. The Sensitivity as well as Specificity is above 99% for each of the exercise method*
+
+### Calcualting Out of sample error - manually
+```{r}
+prediction <- predict(model,forTest)                              # Creating list of predictions
+accuracy <- sum(prediction == forTest$classe)/length(prediction)  # Calculate Accuracy 
+error <- 1- accuracy                                              # Calculate error
+
+```
+
+```{r, echo=FALSE}
+cat("Out of sample Error : ", error*100, "%")
+cat("           Accuracy : ", accuracy*100, "%")
+```
+*Hence the model is able to predict outcome correctly 998 out of 1000 samples correctly. Only 2 instances it is deviating from correct outcomes.*
+
+# Applying predictive model to the Problem data
+### Aplying same transformation to the Problem Data that we did on Training data
+#### Dropping not required COlumns
+```{r}
+pmlTest <- pmlTest[-1]
+pmlTest <- pmlTest[,goodCols]
+
+```
+#### Transforming the Problem dataset Datatypes to that of Training data
+
+```{r}
+stage <- forTrain[1,-which(names(forTrain) %in% c("classe"))]   # Create new dataset skipping the "classe" column, taking only 1st row
+stage$problem_id <- 99                                          # Adding new field similar to thaty of in test dataset
+stage <- rbind(stage, pmlTest)                                  # Appending test data set to Stage date - It would transform the Class
+pmlTest <- stage[-1,]                                           # Drop the additional column from the Stage data
+
+```
+
+### Predicting
+```{r}
+predictProblem <- predict(model, pmlTest)
+```
+*Creating list of prediction for the test data i.e. Problem Data*
+
+Function to write prediction into separate files
+```{r}
+pml_write_files  <- function(x) {
+  n <- length(x)
+  for (i in 1:n) {
+    filename <- paste0("problem_id", i, ".txt")
+    write.table(x[i], file=filename, quote=FALSE, row.names=FALSE,col.names=FALSE)
+  }
+}
+
+```
+
+### Writing prediction to separate files
+```{r}
+pml_write_files (predictProblem)
+```
+
+# Result
+The Output of Model predicited corerct outcomes for all the 20 Scenarios. Confirming accuracy of the model using Rain forest method. 
+
+
+
+
+
